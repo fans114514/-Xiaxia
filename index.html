@@ -1,5 +1,4 @@
 <!doctype html>
-
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
@@ -27,6 +26,7 @@
     select, input[type=number]{background:transparent;color:inherit;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px}
     .actions{display:flex;gap:8px}
     .note{font-size:13px;color:var(--muted);line-height:1.4}
+    .switch{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--muted)}
     @media(max-width:560px){.wrap{margin:12px;padding:12px}textarea{min-height:120px}}
   </style>
 </head>
@@ -73,13 +73,17 @@
         </div>
       </div>
 
+      <div class="switch">
+        <input type="checkbox" id="advancedMode">
+        <label for="advancedMode">开启高级模式（自动解密剪贴板 / 加密后自动复制）</label>
+      </div>
+
     </div>
   </div>
   <script>
   (() => {
-    // 控制字符
-    const ZERO = '\u2060'; // 0 - zero width space
-    const ONE  = '\u200C'; // 1 - zero width non-joiner
+    const ZERO = '\u2060'; // 0
+    const ONE  = '\u200C'; // 1
     const SHRIMP = '🦐';
 
     const el = id => document.getElementById(id);
@@ -90,11 +94,12 @@
     const copyBtn = el('copyBtn');
     const clearBtn = el('clearBtn');
     const bitsSel = el('bitsPerGroup');
+    const advSwitch = el('advancedMode');
 
     function toBinaryWithLengthHeader(text){
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(text));
-      const len = bytes.length >>> 0; // uint32
+      const len = bytes.length >>> 0;
       const lenBits = len.toString(2).padStart(32,'0');
       const dataBits = bytes.map(b => b.toString(2).padStart(8,'0')).join('');
       return lenBits + dataBits;
@@ -116,9 +121,7 @@
       for(let i=0;i<bin.length;i+=bitsPerGroup){
         groups.push(bin.slice(i, i+bitsPerGroup));
       }
-      // map each group's bits to zero-width chars
       const encGroups = groups.map(g => g.split('').map(b => b === '1' ? ONE : ZERO).join(''));
-      // place each group between two shrimps: lead + join + trail
       return SHRIMP + encGroups.join(SHRIMP) + SHRIMP;
     }
 
@@ -144,13 +147,43 @@
       }
     }
 
-    encryptBtn.addEventListener('click', ()=>{
+    async function copyToClipboard(text){
+      let success = false;
+      try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+          await navigator.clipboard.writeText(text);
+          success = true;
+        }
+      } catch {}
+      if (!success) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-9999px';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        try { document.execCommand('copy'); } catch {}
+        document.body.removeChild(textarea);
+      }
+    }
+
+    encryptBtn.addEventListener('click', async ()=>{
       try{
         const bits = parseInt(bitsSel.value,10);
         const src = input.value || '';
         const cleaned = src.replace(/^\s+|\s+$/g, '');
         const enc = encode(cleaned, bits);
         output.value = enc;
+
+        // 高级模式：加密后自动复制
+        if(advSwitch.checked && enc){
+          await copyToClipboard(enc);
+          copyBtn.textContent = '已复制';
+          setTimeout(()=>copyBtn.textContent = '复制输出',1200);
+        }
       }catch(err){
         output.value = '[加密失败：' + String(err) + ']';
       }
@@ -168,45 +201,10 @@
 
     copyBtn.addEventListener('click', async () => {
       const text = output.value;
-      if (!text) {
-        return;
-      }
-      let success = false;
-      try {
-        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-          await navigator.clipboard.writeText(text);
-          success = true;
-        }
-      } catch (err) {
-        console.warn('使用 navigator.clipboard 写入失败：', err);
-      }
-      if (!success) {
-        // 回退方案
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.setAttribute('readonly', '');
-        textarea.style.position = 'fixed';
-        textarea.style.top = '-9999px';
-        textarea.style.left = '-9999px';
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        try {
-          success = document.execCommand('copy');
-        } catch (err) {
-          console.warn('execCommand fallback 复制失败：', err);
-          success = false;
-        }
-        document.body.removeChild(textarea);
-      }
-      if (success) {
-        copyBtn.textContent = '已复制';
-      } else {
-        copyBtn.textContent = '复制失败';
-      }
-      setTimeout(() => {
-        copyBtn.textContent = '复制输出';
-      }, 1200);
+      if (!text) return;
+      await copyToClipboard(text);
+      copyBtn.textContent = '已复制';
+      setTimeout(()=>copyBtn.textContent = '复制输出',1200);
     });
 
     clearBtn.addEventListener('click', ()=>{
@@ -214,7 +212,23 @@
       output.value = '';
     });
 
-    // 如果你之前有 downloadBtn 部分，就按需保留
+    // 高级模式：页面从后台切回前台时尝试读取剪贴板并解密
+    document.addEventListener('visibilitychange', async ()=>{
+      if(advSwitch.checked && document.visibilityState === 'visible'){
+        try{
+          if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+            const text = await navigator.clipboard.readText();
+            if(text && text.includes(SHRIMP)){
+              const dec = decode(text);
+              input.value = text;
+              output.value = dec;
+            }
+          }
+        }catch(err){
+          console.warn('自动读取剪贴板失败：',err);
+        }
+      }
+    });
 
   })();
   </script>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>🦐 语 翻 译 器（增强版）</title>
+  <title>🦐 语 翻译器</title>
   <style>
     :root{--bg:#0b0f12;--panel:#0f1417;--muted:#9aa4a8;--accent:#7ce7c5}
     *{box-sizing:border-box}
@@ -21,16 +21,10 @@
     .row{display:flex;gap:8px;align-items:center}
     .small{font-size:13px;color:var(--muted)}
     .meta{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
-    .footer{margin-top:10px;color:var(--muted);font-size:13px}
     .top-bar{display:flex;gap:8px;align-items:center;margin-bottom:6px}
-    select, input[type=number]{background:transparent;color:inherit;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px}
+    select{background:transparent;color:inherit;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px}
     .actions{display:flex;gap:8px}
-    .note{font-size:13px;color:var(--muted);line-height:1.4}
     .switch{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;color:var(--muted)}
-    .statusBar{margin-top:8px;padding:10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.03);font-size:13px;color:var(--muted)}
-    .statusOk{color:var(--accent);font-weight:600}
-    .statusWarn{color:#f6c85f;font-weight:600}
-    .statusErr{color:#ff7b7b;font-weight:700}
     @media(max-width:560px){.wrap{margin:12px;padding:12px}textarea{min-height:120px}}
   </style>
 </head>
@@ -39,11 +33,10 @@
     <header>
       <div style="font-size:48px">🦐</div>
       <div>
-        <h1>🦐 语翻译器（增强版）</h1>
-        <p class="lead">把任意文本翻译成虾语 — 包含高级模式的调试信息</p>
+        <h1>🦐 语翻译器</h1>
+        <p class="lead">把任意文本翻译成虾语</p>
       </div>
     </header>
-
     <div class="grid">
       <div>
         <div class="top-bar">
@@ -60,7 +53,6 @@
         </div>
         <textarea id="inputText" placeholder="在此输入要加密的文本，或粘贴由本工具生成的🦐语以解密。" spellcheck="false"></textarea>
       </div>
-
       <div class="controls">
         <button class="btn" id="encryptBtn">加密 →</button>
         <button class="btn" id="decryptBtn">← 解密</button>
@@ -82,23 +74,13 @@
       <div class="switch">
         <input type="checkbox" id="advancedMode">
         <label for="advancedMode">开启高级模式（自动解密剪贴板 / 加密后自动复制）</label>
-        <button class="btn ghost" id="tryReadBtn" style="margin-left:8px">尝试读取剪贴板</button>
       </div>
-
-      <div class="statusBar" id="statusBar">
-        状态：<span id="statusText">高级模式未启用</span>
-        <div style="margin-top:6px;font-size:12px;color:var(--muted)" id="hintText">
-          提示：若要自动读取剪贴板，请使用 HTTPS 并允许页面访问剪贴板（某些 WebView/内嵌浏览器不支持）。
-        </div>
-      </div>
-
     </div>
   </div>
-
   <script>
-  (function(){
-    const ZERO = '\u2060';
-    const ONE  = '\u200C';
+  (() => {
+    const ZERO = '\u2060'; // 0
+    const ONE  = '\u200C'; // 1
     const SHRIMP = '🦐';
 
     const el = id => document.getElementById(id);
@@ -110,14 +92,7 @@
     const clearBtn = el('clearBtn');
     const bitsSel = el('bitsPerGroup');
     const advSwitch = el('advancedMode');
-    const statusText = el('statusText');
-    const hintText = el('hintText');
-    const tryReadBtn = el('tryReadBtn');
 
-    // state
-    let hadUserGesture = false;
-
-    // binary helpers
     function toBinaryWithLengthHeader(text){
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(text));
@@ -126,6 +101,7 @@
       const dataBits = bytes.map(b => b.toString(2).padStart(8,'0')).join('');
       return lenBits + dataBits;
     }
+
     function binaryToBytes(binStr, byteCount){
       const bytes = [];
       for(let i=0;i<byteCount;i++){
@@ -134,6 +110,7 @@
       }
       return new Uint8Array(bytes);
     }
+
     function encode(text, bitsPerGroup){
       if(!text) return '';
       const bin = toBinaryWithLengthHeader(text);
@@ -144,6 +121,7 @@
       const encGroups = groups.map(g => g.split('').map(b => b === '1' ? ONE : ZERO).join(''));
       return SHRIMP + encGroups.join(SHRIMP) + SHRIMP;
     }
+
     function decode(shrimpText){
       if(!shrimpText) return '';
       const parts = shrimpText.split(SHRIMP).filter(Boolean);
@@ -156,7 +134,7 @@
       const byteLen = parseInt(lenBits,2);
       const neededBits = byteLen * 8;
       const dataBits = bits.slice(32, 32 + neededBits);
-      if(dataBits.length < neededBits) return '[解密错误：比特长度不足，可能被平台修改或粘贴不完整]';
+      if(dataBits.length < neededBits) return '[解密错误：比特长度不足]';
       const bytes = binaryToBytes(dataBits, byteLen);
       try{
         const decoder = new TextDecoder();
@@ -166,119 +144,40 @@
       }
     }
 
-    // clipboard helpers
     async function copyToClipboard(text){
       try {
         if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
           await navigator.clipboard.writeText(text);
           return true;
         }
-      } catch (e) {
-        console.warn('clipboard.writeText error', e);
-      }
-      // fallback
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly','');
-        ta.style.position = 'fixed';
-        ta.style.left = '-9999px';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        return true;
-      } catch (e) {
-        console.warn('fallback copy failed', e);
-        return false;
-      }
+      } catch {}
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.top = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      try { document.execCommand('copy'); } catch {}
+      document.body.removeChild(textarea);
+      return true;
     }
 
-    async function tryReadClipboardAndDecode(reason){
-      // reason is for logging
-      if(!advSwitch.checked) return;
-      // quick capability check
-      if(!(navigator.clipboard && typeof navigator.clipboard.readText === 'function')){
-        updateStatus('无法读取：浏览器不支持 navigator.clipboard.readText()', 'err');
-        console.warn('no clipboard.readText() support');
-        return;
-      }
-      // If no user gesture yet, still attempt but warn (some browsers require gesture)
-      updateStatus('尝试读取剪贴板……（' + (reason || '') + '）', 'warn');
-      try{
-        const text = await navigator.clipboard.readText();
-        if(text){
-          console.log('剪贴板内容：', text);
-          if(text.includes(SHRIMP)){
-            input.value = text;
-            output.value = decode(text);
-            updateStatus('已检测到🦐编码并解密。', 'ok');
-            return;
-          } else {
-            updateStatus('剪贴板中无🦐编码（已读取但未匹配）', 'warn');
-            return;
-          }
-        } else {
-          updateStatus('剪贴板为空或读取返回空字符串', 'warn');
-        }
-      }catch(err){
-        console.warn('readText error', err);
-        updateStatus('读取剪贴板失败：' + (err && err.message ? err.message : String(err)), 'err');
-      }
-    }
-
-    // permissions API try
-    async function checkClipboardPermission(){
-      if(!navigator.permissions || !navigator.permissions.query) {
-        updateStatus('无法查询权限（Permissions API 不可用），将按常规尝试读取剪贴板', 'warn');
-        return;
-      }
-      try {
-        // spec: name may be 'clipboard-read' but implementations vary
-        const perm = await navigator.permissions.query({ name: 'clipboard-read' });
-        console.log('clipboard-read permission state:', perm.state);
-        if(perm.state === 'granted') {
-          updateStatus('剪贴板读取权限：已授予', 'ok');
-        } else if(perm.state === 'prompt') {
-          updateStatus('剪贴板读取权限：需要提示（将请求用户授权）', 'warn');
-        } else {
-          updateStatus('剪贴板读取权限：被拒绝', 'err');
-        }
-        perm.onchange = () => {
-          console.log('permission changed:', perm.state);
-        };
-      } catch (e) {
-        console.warn('permissions.query clipboard-read failed', e);
-        updateStatus('无法使用 Permissions API 查询：' + (e && e.message ? e.message : String(e)), 'warn');
-      }
-    }
-
-    // status helper
-    function updateStatus(text, level){
-      statusText.textContent = text;
-      statusText.className = '';
-      if(level === 'ok') statusText.classList.add('statusOk');
-      else if(level === 'warn') statusText.classList.add('statusWarn');
-      else if(level === 'err') statusText.classList.add('statusErr');
-    }
-
-    // events
     encryptBtn.addEventListener('click', async ()=>{
       try{
         const bits = parseInt(bitsSel.value,10);
-        const cleaned = (input.value || '').replace(/^\s+|\s+$/g, '');
+        const src = input.value || '';
+        const cleaned = src.trim();
         const enc = encode(cleaned, bits);
         output.value = enc;
         if(advSwitch.checked && enc){
-          const ok = await copyToClipboard(enc);
-          if(ok) updateStatus('加密完成并已复制到剪贴板', 'ok');
-          else updateStatus('加密完成，但复制到剪贴板失败（使用系统限制）', 'warn');
-        } else {
-          updateStatus('加密完成', 'ok');
+          await copyToClipboard(enc);
+          copyBtn.textContent = '已复制';
+          setTimeout(()=>copyBtn.textContent = '复制输出',1200);
         }
       }catch(err){
-        output.value = '[加密失败：' + String(err) + ']';
-        updateStatus('加密失败：' + String(err), 'err');
+        output.value = '[加密失败]';
       }
     });
 
@@ -287,105 +186,38 @@
         const text = input.value || '';
         const dec = decode(text);
         output.value = dec;
-        updateStatus('手动解密完成', 'ok');
       }catch(err){
-        output.value = '[解密失败：' + String(err) + ']';
-        updateStatus('解密失败：' + String(err), 'err');
+        output.value = '[解密失败]';
       }
     });
 
-    copyBtn.addEventListener('click', async ()=>{
+    copyBtn.addEventListener('click', async () => {
       const text = output.value;
-      if(!text) return;
-      const ok = await copyToClipboard(text);
-      if(ok) {
-        copyBtn.textContent = '已复制';
-        setTimeout(()=>copyBtn.textContent = '复制输出', 1200);
-        updateStatus('输出已复制到剪贴板', 'ok');
-      } else {
-        updateStatus('复制失败（可能受浏览器限制）', 'err');
-      }
+      if (!text) return;
+      await copyToClipboard(text);
+      copyBtn.textContent = '已复制';
+      setTimeout(()=>copyBtn.textContent = '复制输出',1200);
     });
 
     clearBtn.addEventListener('click', ()=>{
       input.value = '';
       output.value = '';
-      updateStatus('已清空', 'warn');
     });
 
-    advSwitch.addEventListener('change', async ()=>{
-      const enabled = advSwitch.checked;
-      localStorage.setItem('shrimp.advanced', enabled ? '1' : '0');
-      if(enabled){
-        updateStatus('高级模式已启用，准备读取剪贴板（会尝试请求权限）', 'warn');
-        await checkClipboardPermission();
-        // Immediately try reading if page visible
-        if(document.visibilityState === 'visible') {
-          await tryReadClipboardAndDecode('enabled');
-        }
-      } else {
-        updateStatus('高级模式未启用', 'warn');
-      }
-    });
-
-    // event when page becomes visible or focused
     document.addEventListener('visibilitychange', async ()=>{
       if(advSwitch.checked && document.visibilityState === 'visible'){
-        await tryReadClipboardAndDecode('visibilitychange');
+        try{
+          if (navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+            const text = await navigator.clipboard.readText();
+            if(text && text.includes(SHRIMP)){
+              const dec = decode(text);
+              input.value = text;
+              output.value = dec;
+            }
+          }
+        }catch{}
       }
     });
-    window.addEventListener('focus', async ()=>{
-      if(advSwitch.checked){
-        await tryReadClipboardAndDecode('window focus');
-      }
-    });
-
-    // first user gesture detector: some browsers only allow clipboard after gesture
-    function onFirstGesture(){
-      if(hadUserGesture) return;
-      hadUserGesture = true;
-      console.log('用户首次交互已记录，可尝试读取剪贴板');
-      if(advSwitch.checked){
-        tryReadClipboardAndDecode('user gesture');
-      }
-    }
-    window.addEventListener('pointerdown', onFirstGesture, { once: true });
-    window.addEventListener('keydown', onFirstGesture, { once: true });
-
-    // manual try button
-    tryReadBtn.addEventListener('click', async ()=>{
-      hadUserGesture = true; // treat manual click as user gesture
-      await tryReadClipboardAndDecode('manual button');
-    });
-
-    // init: restore advanced mode
-    (function init(){
-      const adv = localStorage.getItem('shrimp.advanced') === '1';
-      advSwitch.checked = adv;
-      if(adv){
-        updateStatus('高级模式已启用（页面加载） — 尝试查询权限并读取剪贴板', 'warn');
-        checkClipboardPermission().then(()=> {
-          if(document.visibilityState === 'visible') tryReadClipboardAndDecode('init');
-        });
-      } else {
-        updateStatus('高级模式未启用', 'warn');
-      }
-      // quick capability hints
-      if(!(navigator.clipboard && typeof navigator.clipboard.readText === 'function')){
-        hintText.textContent = '提示：当前环境不支持 navigator.clipboard.readText() —— 在某些 WebView / 非 HTTPS 页面中此功能被禁用。';
-      } else if(location.protocol !== 'https:' && location.hostname !== 'localhost'){
-        hintText.textContent = '提示：剪贴板读取在非 HTTPS 页面上可能被限制。建议将页面托管到 HTTPS 或使用 localhost 测试。';
-      } else {
-        hintText.textContent = '提示：已检测基本支持。若自动读取失败，请点击“尝试读取剪贴板”或先与页面任意交互一次（点一下页面）。';
-      }
-    })();
-
-    // expose for debugging (console)
-    window.__shrimp_debug = {
-      tryReadClipboardAndDecode,
-      checkClipboardPermission
-    };
-
   })();
   </script>
 </body>

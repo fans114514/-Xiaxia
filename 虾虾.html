@@ -1,0 +1,199 @@
+<!doctype html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>🦐 语 翻 译 器</title>
+<style>
+  :root{--bg:#0b0f12;--panel:#0f1417;--muted:#9aa4a8;--accent:#7ce7c5}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:linear-gradient(180deg,#051015 0%, #071218 100%); color:#e6eef0;}
+  .wrap{max-width:820px;margin:28px auto;padding:18px;}
+  header{display:flex;align-items:center;gap:12px}
+  h1{font-size:18px;margin:0}
+  p.lead{color:var(--muted);margin:6px 0 18px;font-size:13px}
+  .grid{display:grid;grid-template-columns:1fr;gap:12px}
+  textarea{width:100%;min-height:140px;resize:vertical;padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);background:var(--panel);color:inherit;font-size:15px}
+  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .btn{background:#0d6a55;color:white;padding:10px 14px;border-radius:10px;border:0;font-weight:600;cursor:pointer}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.05)}
+  .row{display:flex;gap:8px;align-items:center}
+  .small{font-size:13px;color:var(--muted)}
+  .meta{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
+  .footer{margin-top:10px;color:var(--muted);font-size:13px}
+  .top-bar{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+  select, input[type=number]{background:transparent;color:inherit;border:1px solid rgba(255,255,255,0.04);padding:8px;border-radius:8px}
+  .actions{display:flex;gap:8px}
+  .note{font-size:13px;color:var(--muted);line-height:1.4}
+  @media(max-width:560px){.wrap{margin:12px;padding:12px}textarea{min-height:120px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div style="font-size:48px">🦐</div>
+    <div>
+      <h1>🦐 语翻译器</h1>
+      <p class="lead">把任意文本翻译成虾语</p>
+    </div>
+  </header>  <div class="grid">
+    <div>
+      <div class="top-bar">
+        <div class="small">输入 / 粘贴文本（加密或解密用）</div>
+        <div style="flex:1"></div>
+        <div class="row">
+          <label class="small">每组比特</label>
+          <select id="bitsPerGroup">
+            <option value="16">16</option>
+            <option value="32">32</option>
+          </select>
+        </div>
+      </div>
+      <textarea id="inputText" placeholder="在此输入要加密的文本，或粘贴由本工具生成的🦐语以解密。" spellcheck="false"></textarea>
+    </div><div class="controls">
+  <button class="btn" id="encryptBtn">加密 →</button>
+  <button class="btn" id="decryptBtn">← 解密</button>
+  <button class="btn ghost" id="clearBtn">清空</button>
+  <div style="flex:1"></div>
+  <div class="small">我爱虾虾</div>
+</div>
+
+<div>
+  <div class="small">输出</div>
+  <textarea id="outputText" readonly placeholder="输出会在这里显示"></textarea>
+  <div class="meta">
+    <div class="actions">
+      <button class="btn ghost" id="copyBtn">复制输出</button>
+    </div>
+  </div>
+</div>
+
+  </div>
+</div><script>
+(() => {
+  // 控制字符
+  const ZERO = '\u200B'; // 0 - zero width space
+  const ONE  = '\u200C'; // 1 - zero width non-joiner
+  const SHRIMP = '🦐';
+
+  const el = id => document.getElementById(id);
+  const input = el('inputText');
+  const output = el('outputText');
+  const encryptBtn = el('encryptBtn');
+  const decryptBtn = el('decryptBtn');
+  const copyBtn = el('copyBtn');
+  const clearBtn = el('clearBtn');
+  const bitsSel = el('bitsPerGroup');
+  const downloadBtn = el('downloadBtn');
+
+  function toBinaryWithLengthHeader(text){
+    const encoder = new TextEncoder();
+    const bytes = Array.from(encoder.encode(text));
+    const len = bytes.length >>> 0; // uint32
+    const lenBits = len.toString(2).padStart(32,'0');
+    const dataBits = bytes.map(b => b.toString(2).padStart(8,'0')).join('');
+    return lenBits + dataBits;
+  }
+
+  function binaryToBytes(binStr, byteCount){
+    const bytes = [];
+    for(let i=0;i<byteCount;i++){
+      const slice = binStr.slice(i*8, i*8+8);
+      bytes.push(parseInt(slice,2));
+    }
+    return new Uint8Array(bytes);
+  }
+
+  function encode(text, bitsPerGroup){
+    if(!text) return '';
+    const bin = toBinaryWithLengthHeader(text);
+    const groups = [];
+    for(let i=0;i<bin.length;i+=bitsPerGroup){
+      groups.push(bin.slice(i, i+bitsPerGroup));
+    }
+    // map each group's bits to zero-width chars
+    const encGroups = groups.map(g => g.split('').map(b => b === '1' ? ONE : ZERO).join(''));
+    // place each group between two shrimps: lead + join + trail
+    // pattern: 🦐<g1>🦐<g2>🦐...
+    return SHRIMP + encGroups.join(SHRIMP) + SHRIMP;
+  }
+
+  function decode(shrimpText){
+    if(!shrimpText) return '';
+    // split by shrimp; remove empty elements (leading/trailing produce empty)
+    const parts = shrimpText.split(SHRIMP).filter(Boolean);
+    if(parts.length === 0) return '';
+    // map zero-width chars back to bits; ignore unknown chars
+    const bits = parts.map(part => {
+      return Array.from(part).map(ch => ch === ONE ? '1' : ch === ZERO ? '0' : '').join('');
+    }).join('');
+
+    if(bits.length < 32) return '[解密错误：数据太短或不是有效的🦐编码]';
+    const lenBits = bits.slice(0,32);
+    const byteLen = parseInt(lenBits,2);
+    const neededBits = byteLen * 8;
+    const dataBits = bits.slice(32, 32 + neededBits);
+    if(dataBits.length < neededBits) return '[解密错误：比特长度不足，可能被平台修改或粘贴不完整]';
+    const bytes = binaryToBytes(dataBits, byteLen);
+    try{
+      const decoder = new TextDecoder();
+      return decoder.decode(bytes);
+    }catch(e){
+      return '[解密失败：无法解码字节]';
+    }
+  }
+
+  encryptBtn.addEventListener('click', ()=>{
+    try{
+      const bits = parseInt(bitsSel.value,10);
+      const src = input.value || '';
+      // trim leading/trailing normal whitespace (but not zero-width!)
+      const cleaned = src.replace(/^\s+|\s+$/g, '');
+      const enc = encode(cleaned, bits);
+      output.value = enc;
+    }catch(err){
+      output.value = '[加密失败：' + String(err) + ']';
+    }
+  });
+
+  decryptBtn.addEventListener('click', ()=>{
+    try{
+      const text = input.value || '';
+      // allow the user to paste visible shrimps only; we process directly
+      const dec = decode(text);
+      output.value = dec;
+    }catch(err){
+      output.value = '[解密失败：' + String(err) + ']';
+    }
+  });
+
+  copyBtn.addEventListener('click', async ()=>{
+    try{
+      await navigator.clipboard.writeText(output.value);
+      copyBtn.textContent = '已复制';
+      setTimeout(()=>copyBtn.textContent = '复制输出',1200);
+    }catch(e){
+      copyBtn.textContent = '复制失败';
+      setTimeout(()=>copyBtn.textContent = '复制输出',1200);
+    }
+  });
+
+  clearBtn.addEventListener('click', ()=>{ input.value=''; output.value=''; });
+
+  downloadBtn.addEventListener('click', ()=>{
+    // let user download this single-file HTML (basic)
+    const blob = new Blob([document.documentElement.outerHTML], {type:'text/html;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'shrimp-language-translator.html';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // small convenience: if user pastes text that looks like shrimps only, place into input automatically
+  output.addEventListener('focus', ()=>{ output.select(); });
+})();
+</script></body>
+</html>
